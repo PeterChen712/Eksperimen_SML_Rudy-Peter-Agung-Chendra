@@ -8,6 +8,8 @@ from sklearn.metrics import (
     accuracy_score, precision_score, recall_score, f1_score,
     classification_report, confusion_matrix, roc_auc_score, log_loss
 )
+import matplotlib
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import seaborn as sns
 import joblib
@@ -27,8 +29,6 @@ def load_preprocessed_data(train_path, test_path):
     return X_train, X_test, y_train, y_test
 
 def create_confusion_matrix_plot(y_true, y_pred, labels, save_path):
-    import matplotlib
-    matplotlib.use('Agg')
     cm = confusion_matrix(y_true, y_pred)
     fig, ax = plt.subplots(figsize=(8, 6))
     sns.heatmap(cm, annot=True, fmt='d', cmap='Blues',
@@ -64,16 +64,13 @@ def train_with_manual_logging(X_train, X_test, y_train, y_test):
                      mlflow=True)
     else:
         mlflow.set_tracking_uri(MLFLOW_TRACKING_URI)
-    
     mlflow.set_experiment(EXPERIMENT_NAME)
-    
     param_grid = {
         'n_estimators': [50, 100, 200],
         'max_depth': [3, 5, 10, None],
         'min_samples_split': [2, 5, 10],
         'min_samples_leaf': [1, 2, 4]
     }
-    
     base_model = RandomForestClassifier(random_state=42)
     grid_search = GridSearchCV(
         estimator=base_model,
@@ -84,47 +81,41 @@ def train_with_manual_logging(X_train, X_test, y_train, y_test):
         return_train_score=True,
         verbose=1
     )
-    
     grid_search.fit(X_train, y_train)
     best_model = grid_search.best_estimator_
     best_params = grid_search.best_params_
-    
     y_pred = best_model.predict(X_test)
     y_pred_proba = best_model.predict_proba(X_test)
     
+    average_method = 'macro' if len(np.unique(y_train)) > 2 else 'binary'
+    
     metrics = {
         'accuracy': accuracy_score(y_test, y_pred),
-        'precision': precision_score(y_test, y_pred, average='binary'),
-        'recall': recall_score(y_test, y_pred, average='binary'),
-        'f1': f1_score(y_test, y_pred, average='binary'),
+        'precision': precision_score(y_test, y_pred, average=average_method),
+        'recall': recall_score(y_test, y_pred, average=average_method),
+        'f1': f1_score(y_test, y_pred, average=average_method),
         'roc_auc': roc_auc_score(y_test, y_pred_proba[:, 1]),
         'log_loss': log_loss(y_test, y_pred_proba),
         'cv_score_mean': grid_search.best_score_,
         'cv_score_std': grid_search.cv_results_['std_test_score'][grid_search.best_index_]
     }
-    
     artifact_dir = "artifacts"
     os.makedirs(artifact_dir, exist_ok=True)
-    
     with mlflow.start_run():
         for param_name, param_value in best_params.items():
             mlflow.log_param(param_name, param_value)
         mlflow.log_param("model_type", "RandomForestClassifier")
         mlflow.log_param("cv_folds", 5)
         mlflow.log_param("random_state", 42)
-        
         for metric_name, metric_value in metrics.items():
             mlflow.log_metric(metric_name, metric_value)
-        
         mlflow.sklearn.log_model(best_model, "model", registered_model_name="heart-disease-rf")
-        
         cm_path = create_confusion_matrix_plot(
             y_test, y_pred, 
             ['No Disease', 'Disease'],
             os.path.join(artifact_dir, 'confusion_matrix.png')
         )
         mlflow.log_artifact(cm_path)
-        
         fi_path = create_feature_importance_plot(
             best_model,
             list(X_train.columns),
@@ -132,7 +123,6 @@ def train_with_manual_logging(X_train, X_test, y_train, y_test):
         )
         if fi_path:
             mlflow.log_artifact(fi_path)
-        
         report = classification_report(y_test, y_pred, 
                                         target_names=['No Disease', 'Disease'],
                                         output_dict=True)
@@ -140,12 +130,10 @@ def train_with_manual_logging(X_train, X_test, y_train, y_test):
         with open(report_path, 'w') as f:
             json.dump(report, f, indent=2)
         mlflow.log_artifact(report_path)
-        
         gs_results = pd.DataFrame(grid_search.cv_results_)
         gs_path = os.path.join(artifact_dir, 'grid_search_results.csv')
         gs_results.to_csv(gs_path, index=False)
         mlflow.log_artifact(gs_path)
-        
         model_summary = {
             'model_type': 'RandomForestClassifier',
             'best_params': best_params,
@@ -159,17 +147,14 @@ def train_with_manual_logging(X_train, X_test, y_train, y_test):
         with open(summary_path, 'w') as f:
             json.dump(model_summary, f, indent=2, default=str)
         mlflow.log_artifact(summary_path)
-        
         scaler_path = "heart_preprocessing/scaler.pkl"
         if os.path.exists(scaler_path):
             mlflow.log_artifact(scaler_path)
-    
     return best_model, metrics
 
 def main():
     train_path = "heart_preprocessing/heart_train_preprocessed.csv"
     test_path = "heart_preprocessing/heart_test_preprocessed.csv"
-    
     X_train, X_test, y_train, y_test = load_preprocessed_data(train_path, test_path)
     train_with_manual_logging(X_train, X_test, y_train, y_test)
 

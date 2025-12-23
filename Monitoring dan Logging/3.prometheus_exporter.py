@@ -86,7 +86,7 @@ MODEL_INFO = Info(
 
 DATA_DRIFT_SCORE = Gauge(
     'ml_data_drift_score',
-    'Data drift score (0-1, higher means more drift)',
+    'Data drift score',
     ['feature_name']
 )
 
@@ -102,7 +102,6 @@ class MetricsCollector:
     def __init__(self, model_name="heart-disease-classifier", model_version="1.0"):
         self.model_name = model_name
         self.model_version = model_version
-        
         MODEL_INFO.info({
             'name': model_name,
             'version': model_version,
@@ -115,28 +114,11 @@ class MetricsCollector:
     def record_prediction(self, start_time, predicted_class, confidence, success=True):
         latency = time.time() - start_time
         status = 'success' if success else 'error'
-        
-        PREDICTION_COUNTER.labels(
-            model_name=self.model_name, 
-            status=status
-        ).inc()
-        
-        PREDICTION_LATENCY.labels(
-            model_name=self.model_name
-        ).observe(latency)
-        
-        PREDICTION_LATENCY_SUMMARY.labels(
-            model_name=self.model_name
-        ).observe(latency)
-        
-        PREDICTION_CLASS.labels(
-            model_name=self.model_name,
-            predicted_class=str(predicted_class)
-        ).inc()
-        
-        PREDICTION_CONFIDENCE.labels(
-            model_name=self.model_name
-        ).observe(confidence)
+        PREDICTION_COUNTER.labels(model_name=self.model_name, status=status).inc()
+        PREDICTION_LATENCY.labels(model_name=self.model_name).observe(latency)
+        PREDICTION_LATENCY_SUMMARY.labels(model_name=self.model_name).observe(latency)
+        PREDICTION_CLASS.labels(model_name=self.model_name, predicted_class=str(predicted_class)).inc()
+        PREDICTION_CONFIDENCE.labels(model_name=self.model_name).observe(confidence)
         
     def record_input_features(self, features):
         feature_names = [
@@ -145,45 +127,28 @@ class MetricsCollector:
         ]
         for i, value in enumerate(features):
             if i < len(feature_names):
-                INPUT_FEATURE_VALUE.labels(
-                    feature_name=feature_names[i]
-                ).observe(value)
+                INPUT_FEATURE_VALUE.labels(feature_name=feature_names[i]).observe(value)
                 
     def record_error(self, error_type):
-        ERROR_COUNTER.labels(
-            model_name=self.model_name,
-            error_type=error_type
-        ).inc()
+        ERROR_COUNTER.labels(model_name=self.model_name, error_type=error_type).inc()
         
     def update_model_metrics(self, accuracy, f1_score):
-        MODEL_ACCURACY.labels(
-            model_name=self.model_name,
-            version=self.model_version
-        ).set(accuracy)
-        
-        MODEL_F1_SCORE.labels(
-            model_name=self.model_name,
-            version=self.model_version
-        ).set(f1_score)
+        MODEL_ACCURACY.labels(model_name=self.model_name, version=self.model_version).set(accuracy)
+        MODEL_F1_SCORE.labels(model_name=self.model_name, version=self.model_version).set(f1_score)
         
     def update_system_metrics(self):
         memory = psutil.virtual_memory()
         MEMORY_USAGE.labels(type='used').set(memory.used)
         MEMORY_USAGE.labels(type='available').set(memory.available)
         MEMORY_USAGE.labels(type='total').set(memory.total)
-        
         cpu_percent = psutil.cpu_percent(interval=0.1)
         CPU_USAGE.set(cpu_percent)
         
     def set_model_load_time(self, load_time):
-        MODEL_LOAD_TIME.labels(
-            model_name=self.model_name
-        ).set(load_time)
+        MODEL_LOAD_TIME.labels(model_name=self.model_name).set(load_time)
         
     def update_drift_score(self, feature_name, score):
-        DATA_DRIFT_SCORE.labels(
-            feature_name=feature_name
-        ).set(score)
+        DATA_DRIFT_SCORE.labels(feature_name=feature_name).set(score)
         
     def increment_active_requests(self):
         ACTIVE_REQUESTS.inc()
@@ -198,11 +163,9 @@ def get_metrics():
 
 if __name__ == "__main__":
     collector = MetricsCollector()
-    
     collector.update_model_metrics(accuracy=0.96, f1_score=0.95)
     collector.set_model_load_time(1.5)
     collector.update_system_metrics()
-    
     import random
     for _ in range(10):
         start = time.time()
@@ -218,6 +181,5 @@ if __name__ == "__main__":
             random.uniform(1.0, 7.0),
             random.uniform(0.1, 2.5)
         ])
-    
     print("Prometheus Metrics:")
     print(get_metrics().decode('utf-8'))
