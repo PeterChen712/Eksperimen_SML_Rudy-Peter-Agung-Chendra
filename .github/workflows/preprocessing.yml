@@ -27,21 +27,21 @@ jobs:
         
     - name: Run preprocessing
       run: |
-        cd Membangun_model
-        python automate_Rudy-Peter-Agung-Chendra.py --input heart.csv --output heart_preprocessing
+        cd preprocessing
+        python automate_Rudy-Peter-Agung-Chendra.py --input ../heart.csv --output heart_preprocessing
         
     - name: Upload preprocessed data
       uses: actions/upload-artifact@v4
       with:
         name: heart-preprocessed-data
-        path: Membangun_model/heart_preprocessing/
+        path: preprocessing/heart_preprocessing/
         retention-days: 90
         
     - name: Commit preprocessed data
       run: |
         git config --local user.email "action@github.com"
         git config --local user.name "GitHub Action"
-        git add Membangun_model/heart_preprocessing/*.csv
+        git add preprocessing/heart_preprocessing/*.csv
         git diff --staged --quiet || git commit -m "Auto-update preprocessed data [skip ci]"
         
     - name: Push changes
